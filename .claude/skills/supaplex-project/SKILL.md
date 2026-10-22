@@ -22,7 +22,17 @@ Faithful to the DOS original beats modern. Same method as the Stunts remake (see
 - `src/sim/demo.ts` + `demo.test.ts` — DEMO*.BIN: byte0 level, then (count-1)<<4 | input, 0xFF end.
   Input is read before every tick. The test checks each demo's level ends in its last 64 frames.
 - `src/input.ts` — keyboard + touch → Input code (original updateUserInput priority).
-- `src/main.ts` — loop, panel, menu. `?level=N` starts at level N.
+- `src/main.ts` — flow: intro → menu → game. `?level=N` starts level N directly, `?skipintro`.
+- `src/app/runtime.ts` — screens are async loops (`await rt.frame()` = one videoLoop), fades,
+  slides, taps/keys in 320×200 coords, the animated mouse cursor (MOVING.DAT y=445).
+- `src/app/menu.ts` — main menu + info screens + Controls, recreated from supaplex.c (positions,
+  colours, texts). Button areas/border lines generated: `tools/gen-ui-tables.mjs` →
+  `src/ui/tables.generated.ts`. `src/ui/players.ts` — PLAYER.LST/HALLFAME.LST logic (localStorage).
+- `src/app/game.ts` — runLevel: fade, ticks at 35/s, panel, slide-down; demo playback.
+- `src/audio/` — effects with the original priorities; `xm.ts` small XM player for the music.
+  Sound types (Controls screen) pick OpenSupaplex's per-card recordings (`audio/<sound>-<card>.wav`).
+- Palettes: 0 info screens (BACK.DAT), 1 game + menu + GFX, 2 Controls, 3 dimmed; title palettes are
+  constants in main.ts (graphics.c gTitle*PaletteData).
 
 ## Reference
 - `reference/open-supaplex/` (git-ignored): OpenSupaplex sources for facts.
@@ -31,5 +41,7 @@ Faithful to the DOS original beats modern. Same method as the Stunts remake (see
 ## Tools
 - `node tools/dump.ts` — original pictures → PNG in screenshots/dump.
 - `node tools/shot.mjs out.png url keys wait` — headless screenshot.
-- `node tools/phone.mjs url outDir portrait|landscape` — emulated iPhone touch test.
+- `node tools/phone.mjs url outDir portrait|landscape` — emulated iPhone touch test (use `?level=1`).
+- `node tools/flow.mjs url outDir "wait:ms,key:Code,hold:Code:ms,click:x:y,shot:name"` — walk the screens.
+- Deploy: `node tools/copy-original.mjs` then `MSYS_NO_PATHCONV=1 npx vite build --base=/<repo>/`.
 - `src/_debug2.test.ts` (ignored) — render demo frames: `DEMO=1 FROM=0 EVERY=100 npx vitest run src/_debug2.test.ts`.

@@ -17,6 +17,9 @@ npm run dev      # http://localhost:5173/?level=1
 npm test         # includes replaying the original DEMO*.BIN files (needs original_game/)
 ```
 
+Deploy (GitHub Pages): `node tools/copy-original.mjs` copies the data files to `public/original/`
+(git-ignored until it's decided they may be published), the workflow builds with `--base=/<repo>/`.
+
 Controls: arrows, Space (eat without moving / hold to drop a red disk), Esc (give up), P (pause).
 Touch: drag anywhere = held direction (floating stick), quick flick = one step, hold still or
 second finger = Space.
