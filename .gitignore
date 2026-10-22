@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+original_game/
+reference/
+screenshots/
+tools/_*
+src/_*

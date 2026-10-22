@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Phones: no zooming, draw under the notch (viewport-fit=cover). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Supaplex</title>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Supaplex" />
+    <meta name="theme-color" content="#000000" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      body {
+        touch-action: none; overscroll-behavior: none; user-select: none; -webkit-user-select: none;
+        -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+        font: 16px/1.3 ui-monospace, Menlo, Consolas, monospace; color: #ddd;
+      }
+      /* The whole page is the touch area; the 320×200 screen sits at the top (portrait) or centred. */
+      #play { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; }
+      #game {
+        image-rendering: pixelated; image-rendering: crisp-edges;
+        width: min(100vw, calc(100dvh * 1.6)); aspect-ratio: 320 / 200; height: auto;
+      }
+      #touch { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      #hint {
+        display: none; position: fixed; left: 0; right: 0; bottom: calc(24px + env(safe-area-inset-bottom));
+        text-align: center; color: #777; font-size: 13px; padding: 0 16px; pointer-events: none;
+      }
+      @media (orientation: portrait) {
+        #play { align-items: flex-start; padding-top: env(safe-area-inset-top); }
+        #hint { display: block; }
+      }
+      #pause {
+        position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));
+        width: 40px; height: 40px; border-radius: 8px; border: 0; background: rgba(0,0,0,0.45); color: #ccc;
+        font-size: 18px; display: none;
+      }
+      @media (pointer: coarse) { #pause { display: block; } }
+      #menu, #message {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.85); border: 2px solid #777; padding: 16px 20px; text-align: center;
+      }
+      #menu button {
+        display: block; width: 220px; margin: 8px auto; padding: 10px; font: inherit;
+        background: #333; color: #eee; border: 1px solid #888;
+      }
+      #message { pointer-events: none; color: #fc5; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="play"><canvas id="game"></canvas></div>
+    <canvas id="touch"></canvas>
+    <div id="hint">Drag anywhere to move · flick for one step · hold still or use a 2nd finger for SPACE</div>
+    <button id="pause" aria-label="Menu">❚❚</button>
+    <div id="menu" hidden>
+      <button id="resume">Resume</button>
+      <button id="restart">Restart level (Esc)</button>
+      <button id="skip">Skip to next level</button>
+      <div style="color:#888;font-size:13px;margin-top:10px">Keys: arrows, Space, Esc, P</div>
+    </div>
+    <div id="message" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
