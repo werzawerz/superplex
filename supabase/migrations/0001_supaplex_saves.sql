@@ -2,6 +2,8 @@
 -- One row per synced player, found only by its secret sync code: the table stores the code's
 -- SHA-256, never the code. No direct table access for the web client (RLS on, no policies);
 -- it goes through the two functions below, which need the code. Payload is size capped.
+-- Applied 2026-10-22. The security advisor's "RLS enabled, no policy" and "anon can execute
+-- SECURITY DEFINER function" notices for these objects are this design, on purpose.
 
 create table if not exists public.supaplex_saves (
   id text primary key check (char_length(id) = 64),  -- hex sha256 of the sync code

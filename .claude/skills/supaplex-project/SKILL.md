@@ -57,5 +57,8 @@ Faithful to the DOS original beats modern. Same method as the Stunts remake (see
   done, larger play time; offline save code `SUPAPLEX:<base64>`), `src/app/cloud.ts` (☁ panel on the
   menu; syncAll on menu entry and after each level). `.env` holds the public URL + publishable key.
 - Test without touching the live DB: `node tools/sync-e2e.mjs` (fake cloud via page.route).
-- The Supabase MCP is configured in ../stunts/.mcp.json (token from env SUPABASE_ACCESS_TOKEN);
-  `tools/_sb.mjs` (git-ignored) runs SQL through the Management API with the same token.
+- Migration applied 2026-10-22 (advisor notices for it are by design, see the SQL file).
+- Supabase MCP: `.mcp.json` (token from env SUPABASE_ACCESS_TOKEN). If the MCP says
+  "Unauthorized", the process has a stale copy of the variable: `tools/_sb.mjs` (git-ignored) runs
+  SQL / advisors through the Management API reading the token from the Windows user environment.
+  Test as the web role without leaving rows: `begin; set local role anon; ...; rollback;`.
