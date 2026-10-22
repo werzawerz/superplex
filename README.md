@@ -17,8 +17,9 @@ npm run dev      # http://localhost:5173/?level=1
 npm test         # includes replaying the original DEMO*.BIN files (needs original_game/)
 ```
 
-Deploy (GitHub Pages): `node tools/copy-original.mjs` copies the data files to `public/original/`
-(git-ignored until it's decided they may be published), the workflow builds with `--base=/<repo>/`.
+Live: https://werzawerz.github.io/superplex/ — GitHub Actions builds every push to main. The data
+files the game reads are published in `public/original/` (Supaplex is freeware); refresh them with
+`node tools/copy-original.mjs`.
 
 Controls: arrows, Space (eat without moving / hold to drop a red disk), Esc (give up), P (pause).
 Touch: drag anywhere = held direction (floating stick), quick flick = one step, hold still or
