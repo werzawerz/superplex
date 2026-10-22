@@ -47,6 +47,24 @@
         background: #333; color: #eee; border: 1px solid #888;
       }
       #message { pointer-events: none; color: #fc5; }
+      #cloudBtn {
+        position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));
+        width: 40px; height: 40px; border-radius: 8px; border: 0; background: rgba(0,0,0,0.55); color: #ddd; font-size: 20px;
+      }
+      #cloud {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 32px));
+        max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box;
+        background: rgba(0,0,0,0.92); border: 2px solid #777; padding: 14px 16px; font-size: 14px;
+      }
+      #cloud > * { margin: 8px 0; }
+      #cloud .title { color: #fc5; font-size: 16px; }
+      #cloud .note { color: #999; font-size: 12px; }
+      #cloud .row { display: flex; gap: 8px; }
+      #cloud button { font: inherit; background: #333; color: #eee; border: 1px solid #888; padding: 8px 10px; }
+      #cloud button.small { padding: 4px 8px; }
+      #cloud #cloudMake, #cloud #cloudClose { display: block; width: 100%; }
+      #cloud input { flex: 1; min-width: 0; font: 16px ui-monospace, monospace; background: #111; color: #fff; border: 1px solid #888; padding: 6px; text-transform: uppercase; }
+      #cloudStatus { color: #8f8; min-height: 1em; }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -62,6 +80,19 @@
       <button id="fx">Sound effects</button>
       <button id="delay">Hold to walk after</button>
       <div style="color:#888;font-size:13px;margin-top:10px">Keys: arrows, Space, Esc, P, Enter (panel), Right Shift (red disks)</div>
+    </div>
+    <button id="cloudBtn" aria-label="Save and sync" hidden>☁</button>
+    <div id="cloud" hidden>
+      <div class="title">Save &amp; sync</div>
+      <div id="cloudPlayer"></div>
+      <div>Sync code: <b id="cloudCode">—</b> <button id="cloudCopy" class="small">Copy</button></div>
+      <button id="cloudMake">Turn on sync for this player</button>
+      <div class="note">On your other device: ☁ → enter the code → Link. Progress then merges after every level.</div>
+      <div class="row"><input id="cloudInput" placeholder="ABCD-EFGH-JKLM" autocomplete="off" autocapitalize="characters" spellcheck="false" /><button id="cloudLink" class="small">Link</button></div>
+      <div class="note">Without internet: copy all players as a save code, load it on the other device.</div>
+      <div class="row"><button id="cloudExport" class="small">Copy save code</button><button id="cloudImport" class="small">Load save code</button></div>
+      <div id="cloudStatus"></div>
+      <button id="cloudClose">Close</button>
     </div>
     <div id="message" hidden></div>
     <script type="module" src="/src/main.ts"></script>

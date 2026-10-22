@@ -53,6 +53,13 @@ export class Menu {
     this.rt.text6(168, 127, color, text.padEnd(23).slice(0, 23));
   }
 
+  /** Redraws the player-dependent parts (after a cloud sync changed the progress). */
+  refresh(): void {
+    this.drawPlayerList();
+    this.drawLevelList();
+    this.drawRankings();
+  }
+
   // ------------------------------------------------------------------ drawing
 
   /** drawMenuBackground + drawMenuTitleAndDemoLevelResult */

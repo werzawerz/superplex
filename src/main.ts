@@ -13,6 +13,7 @@ import { Players, LevelState } from './ui/players';
 import { Runtime, BLACK } from './app/runtime';
 import { Menu, type LevelResult, type MenuChoice } from './app/menu';
 import { Game } from './app/game';
+import { Cloud } from './app/cloud';
 
 const BASE = import.meta.env.DEV ? '/original_game/' : `${import.meta.env.BASE_URL}original/`;
 const params = new URLSearchParams(location.search);
@@ -91,6 +92,11 @@ async function main(): Promise<void> {
   const menu = new Menu(rt, { menu: menuDat!, back: back!, gfx: gfx!, controls: controlsDat! });
   const game = new Game(rt);
   setupTouchUi(rt, game);
+  const cloud = new Cloud(rt.players);
+  let inMenu = false;
+  cloud.onChange = () => {
+    if (inMenu) menu.refresh();
+  };
   // Tapping a tile next to Murphy steps there.
   controls.adjacentDir = (cx, cy) => {
     if (!inGame || game.paused) return 0;
@@ -109,7 +115,12 @@ async function main(): Promise<void> {
   let fadeIn = true;
   let direct = params.has('level') ? Number(params.get('level')) : 0;
   for (;;) {
+    inMenu = !direct;
+    cloud.setButtonVisible(inMenu);
+    if (inMenu) void cloud.syncAll();
     const choice: MenuChoice = direct ? { kind: 'play', level: direct, countTime: false } : await menu.run(result, fadeIn);
+    inMenu = false;
+    cloud.setButtonVisible(false);
     direct = 0;
     const demo = choice.kind === 'demo' ? demos[choice.index] ?? null : null;
     if (choice.kind === 'demo' && !demo) continue;
@@ -122,6 +133,7 @@ async function main(): Promise<void> {
       if (r.won) rt.players.setSelectedLevelState(LevelState.Completed);
       if (choice.countTime) rt.players.addTime(r.seconds);
       rt.players.prepareLevelData(false);
+      void cloud.syncAll();
     }
     result = { won: r.won, demo: choice.kind === 'demo' };
     if (!r.won && choice.kind === 'play') {

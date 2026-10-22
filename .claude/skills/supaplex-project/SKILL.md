@@ -49,3 +49,13 @@ Faithful to the DOS original beats modern. Same method as the Stunts remake (see
 - `node tools/flow.mjs url outDir "wait:ms,key:Code,hold:Code:ms,click:x:y,shot:name"` — walk the screens.
 - Deploy: `node tools/copy-original.mjs` then `MSYS_NO_PATHCONV=1 npx vite build --base=/<repo>/`.
 - `src/_debug2.test.ts` (ignored) — render demo frames: `DEMO=1 FROM=0 EVERY=100 npx vitest run src/_debug2.test.ts`.
+
+## Cloud saves (Supabase, the Stunts project nopkuhlhvxkrlpvmclab)
+- `supabase/migrations/0001_supaplex_saves.sql`: table `supaplex_saves` (id = sha256 of the sync
+  code, RLS on, no policies) + security-definer RPCs `supaplex_load(code)` / `supaplex_save(code, payload)`.
+- Client: `src/ui/sync.ts` (codes XXXX-XXXX-XXXX, merge: completed anywhere wins, skipped beats not
+  done, larger play time; offline save code `SUPAPLEX:<base64>`), `src/app/cloud.ts` (☁ panel on the
+  menu; syncAll on menu entry and after each level). `.env` holds the public URL + publishable key.
+- Test without touching the live DB: `node tools/sync-e2e.mjs` (fake cloud via page.route).
+- The Supabase MCP is configured in ../stunts/.mcp.json (token from env SUPABASE_ACCESS_TOKEN);
+  `tools/_sb.mjs` (git-ignored) runs SQL through the Management API with the same token.

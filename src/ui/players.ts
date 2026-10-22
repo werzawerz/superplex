@@ -1,6 +1,7 @@
 // Players, level progress, rankings and hall of fame — the original's PLAYER.LST and
 // HALLFAME.LST logic (prepareLevelDataForCurrentPlayer, changePlayerCurrentLevelState, ...),
 // stored in the browser.
+import { mergeInto, type SavedPlayer } from './sync';
 
 export const NUMBER_OF_LEVELS = 111;
 export const NUMBER_OF_PLAYERS = 20;
@@ -28,6 +29,8 @@ export interface Player {
   levelState: number[];
   nextLevelToPlay: number;
   completedAllLevels: boolean;
+  /** Secret code of this player's cloud save, once sync is on (see sync.ts). */
+  syncCode?: string;
 }
 
 export interface HallOfFameEntry {
@@ -169,6 +172,26 @@ export class Players {
     if (at < 0) return;
     this.hallOfFame.splice(at, 0, { name: p.name, hours: p.hours, minutes: p.minutes, seconds: p.seconds });
     this.hallOfFame.length = 3;
+  }
+
+  /**
+   * Brings in a player from another device: merged into the local player of the same name, or
+   * put in a free slot. Returns the slot, or -1 if the list is full.
+   */
+  importPlayer(s: SavedPlayer, syncCode?: string): number {
+    const name = s.name.slice(0, 8).padStart(8, ' ');
+    let slot = this.list.findIndex((p) => p.name === name);
+    if (slot < 0) {
+      slot = this.list.findIndex((p) => p.name === NO_NAME);
+      if (slot < 0) return -1;
+      this.list[slot] = { ...emptyPlayer(), name };
+    }
+    const p = this.list[slot]!;
+    mergeInto(p, s);
+    if (syncCode) p.syncCode = syncCode;
+    if (slot === this.current) this.prepareLevelData(true);
+    this.save();
+    return slot;
   }
 
   /** New player name: up to 8 of 0-9 A-Z space '-', right-aligned. Returns an error text or null. */

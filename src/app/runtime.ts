@@ -44,7 +44,7 @@ export class Runtime {
       return { x: Math.floor(((e.clientX - r.left) / r.width) * SCREEN_W), y: Math.floor(((e.clientY - r.top) / r.height) * SCREEN_H) };
     };
     addEventListener('pointerdown', (e) => {
-      if ((e.target as Element).closest?.('button, #menu')) return;
+      if ((e.target as Element).closest?.('button, #menu, #cloud')) return;
       const p = toScreen(e);
       Object.assign(this.pointer, p, { down: true, mouse: e.pointerType === 'mouse', button: e.button });
       this.showCursor = e.pointerType === 'mouse';

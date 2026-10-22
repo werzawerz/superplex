@@ -65,6 +65,7 @@ export class Controls {
 
   constructor(touchTarget: HTMLElement) {
     addEventListener('keydown', (e) => {
+      if ((e.target as Element | null)?.closest?.('input, textarea')) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Space'].includes(e.key) || e.code === 'Space') e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
