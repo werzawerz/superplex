@@ -12,6 +12,8 @@ export class Screen {
   private readonly image: ImageData;
   private readonly rgba: Uint32Array;
   private lut = new Uint32Array(16);
+  /** The palette currently shown (fades go from here). */
+  palette: Palette = Array.from({ length: 16 }, () => [0, 0, 0]);
 
   constructor(readonly canvas: HTMLCanvasElement) {
     canvas.width = SCREEN_W;
@@ -22,6 +24,7 @@ export class Screen {
   }
 
   setPalette(p: Palette): void {
+    this.palette = p.map((c) => [...c] as [number, number, number]);
     // ImageData is RGBA in memory: little-endian 0xAABBGGRR.
     this.lut = Uint32Array.from(p, ([r, g, b]) => (0xff000000 | (b << 16) | (g << 8) | r) >>> 0);
   }
@@ -38,18 +41,27 @@ export class Screen {
 
   blit(src: IndexedBitmap, dx: number, dy: number): void {
     for (let y = 0; y < src.height; y++) {
+      if (dy + y < 0 || dy + y >= SCREEN_H) continue;
       this.pixels.set(src.pixels.subarray(y * src.width, (y + 1) * src.width), (dy + y) * SCREEN_W + dx);
     }
   }
 
-  /** CHARS8 text, opaque: background pixels become colour 0 (as the original). */
-  text(font: Uint8Array, x: number, y: number, color: number, s: string): void {
+  /**
+   * Original bitmap-font text: CHARS8 is 8 px per character, CHARS6 6 px. Opaque text writes
+   * colour 0 behind the glyphs; transparent text only sets the glyph pixels.
+   */
+  text(font: Uint8Array, x: number, y: number, color: number, s: string, width = 8, opaque = true): void {
     for (let i = 0; i < s.length; i++) {
+      if (s[i] === '\n') return;
       const rows = glyphRows(font, s[i]!);
       for (let r = 0; r < 7; r++) {
-        for (let b = 0; b < 8; b++) {
-          const px = x + i * 8 + b;
-          if (px < SCREEN_W) this.pixels[(y + r) * SCREEN_W + px] = (rows[r]! >> (7 - b)) & 1 ? color : 0;
+        for (let b = 0; b < width; b++) {
+          const px = x + i * width + b;
+          const py = y + r;
+          if (px >= SCREEN_W || py >= SCREEN_H) continue;
+          const on = (rows[r]! >> (7 - b)) & 1;
+          if (on) this.pixels[py * SCREEN_W + px] = color;
+          else if (opaque) this.pixels[py * SCREEN_W + px] = 0;
         }
       }
     }

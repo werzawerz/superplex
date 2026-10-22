@@ -87,7 +87,11 @@ const playBaseSound = () => sounds.push('base');
 const playExitSound = () => sounds.push('exit');
 // The panel is drawn from the state each frame.
 const drawNumberOfRemainingInfotrons = () => {};
-const drawNumberOfRemainingRedDisks = () => {};
+/** Frames the red disk count stays on the panel (original: gAdditionalInfoInGamePanelFrameCounter). */
+let gAdditionalInfoInGamePanelFrameCounter = 0;
+const drawNumberOfRemainingRedDisks = () => {
+    gAdditionalInfoInGamePanelFrameCounter = 0x46;
+};
 
 function generateRandomNumber(): number {
   gRandomGeneratorSeed = u16(gRandomGeneratorSeed * 0x5e5 + 0x31);
@@ -4453,6 +4457,10 @@ export interface GameStatus {
   infotronsTotal: number;
   redDisks: number;
   explosionStarted: boolean;
+  /** Show the red disk count on the panel (after a pickup/drop or Right Shift). */
+  showRedDisks: boolean;
+  /** Murphy went into the exit (the level counts as won even if it is still running). */
+  exitReached: boolean;
   frame: number;
   murphy: number;
   murphyX: number;
@@ -4495,6 +4503,7 @@ export function startLevel(level: LevelData, randomSeed: number): void
     gMurphyCounterToStartPushAnimation = 0;
     gPreviousUserInputWasNone = 0;
     gLevelFailed = 1;
+    gAdditionalInfoInGamePanelFrameCounter = 0;
     gameOver = 'playing';
     gRandomGeneratorSeed = randomSeed & 0xffff;
     // findMurphy + scrollToMurphy
@@ -4530,6 +4539,10 @@ export function tick(input: number, quit = false): GameStatus
             gShouldKillMurphy = 1;
         }
         updateMovingObjects();
+        if (gAdditionalInfoInGamePanelFrameCounter != 0)
+        {
+            gAdditionalInfoInGamePanelFrameCounter--;
+        }
         updatePlantedRedDisk();
         updateExplosionTimers();
         updateScrollOffset();
@@ -4612,6 +4625,8 @@ export function status(): GameStatus
         infotronsLeft: gNumberOfRemainingInfotrons,
         infotronsTotal: gTotalNumberOfInfotrons,
         explosionStarted: gIsExplosionStarted != 0,
+        showRedDisks: gAdditionalInfoInGamePanelFrameCounter != 0,
+        exitReached: gLevelFailed == 0,
         redDisks: gNumberOfRemainingRedDisks,
         frame: gFrameCounter,
         murphy: gMurphyLocation,
@@ -4620,6 +4635,12 @@ export function status(): GameStatus
         result: gameOver,
         sounds,
     };
+}
+
+/** Right Shift in the original: show the red disk count for a while. */
+export function showRedDiskCount(): void
+{
+    drawNumberOfRemainingRedDisks();
 }
 
 /** Is a moving/exploding thing near the screen shaking? (original: shake while quitting) */

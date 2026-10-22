@@ -1,102 +1,175 @@
-// Supaplex in the browser: runs the original's game logic at its 35 iterations per second and
-// shows it like the DOS game (320×200, bottom panel), with keyboard or touch controls.
-import { loadAssets, type Assets } from './assets';
-import { decodeLevel, levelCount, PALETTE_GAME } from './data/formats';
-import { Screen, SCREEN_H, PANEL_H } from './screen';
+// Supaplex in the browser, in the order of the original: title pictures, main menu, levels.
+import { loadAssets } from './assets';
+import { decodeScreen, type Palette } from './data/formats';
+import { Screen, SCREEN_W } from './screen';
 import { Controls, type StickView } from './input';
 import { setSpriteSheets } from './sim/draw';
-import { startLevel, tick, scrollOffset, isMurphyIdle, status, type GameStatus } from './sim/logic';
 import { Input } from './sim/tiles';
+import { parseDemo } from './sim/demo';
+import { status } from './sim/logic';
+import { Audio } from './audio/audio';
+import { Players, LevelState } from './ui/players';
+import { Runtime, BLACK } from './app/runtime';
+import { Menu, type LevelResult, type MenuChoice } from './app/menu';
+import { Game } from './app/game';
 
-const TICK_MS = 1000 / 35;
+const BASE = import.meta.env.DEV ? '/original_game/' : `${import.meta.env.BASE_URL}original/`;
 const params = new URLSearchParams(location.search);
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const overlay = document.getElementById('touch') as HTMLCanvasElement;
-const menu = document.getElementById('menu') as HTMLDivElement;
+const pauseMenu = document.getElementById('menu') as HTMLDivElement;
+const pauseButton = document.getElementById('pause') as HTMLButtonElement;
 const message = document.getElementById('message') as HTMLDivElement;
-const screen = new Screen(canvas);
-const controls = new Controls(document.getElementById('play')!);
 
-let assets: Assets;
-let levelIndex = Math.max(0, Number(params.get('level') ?? 1) - 1);
-let levelName = '';
-let paused = false;
-let last = 0;
-let acc = 0;
-let st: GameStatus;
-/** After a level ends: frames to wait before the next/same level starts. */
-let between = 0;
+// Title palettes (graphics.c gTitle*PaletteData), 0..15 per channel.
+const titlePalette = (a: number[]): Palette => Array.from({ length: 16 }, (_, i) => [a[i * 4]! * 17, a[i * 4 + 1]! * 17, a[i * 4 + 2]! * 17]);
+const TITLE = titlePalette([2, 3, 5, 0, 13, 10, 4, 12, 2, 6, 6, 2, 3, 9, 9, 3, 11, 8, 3, 6, 2, 7, 7, 10, 8, 6, 13, 9, 6, 4, 11, 1, 9, 1, 0, 4, 11, 1, 0, 4, 13, 1, 0, 12, 15, 1, 0, 12, 15, 6, 4, 12, 2, 5, 6, 8, 15, 12, 6, 14, 12, 12, 13, 14]);
+const TITLE1 = titlePalette([0, 0, 0, 0, 15, 15, 15, 15, 8, 8, 8, 8, 10, 10, 10, 7, 10, 10, 10, 7, 11, 11, 11, 7, 14, 1, 1, 4, 9, 9, 9, 7, 8, 8, 8, 8, 8, 8, 8, 8, 9, 0, 0, 4, 11, 0, 0, 12, 8, 8, 8, 8, 5, 5, 5, 8, 6, 6, 6, 8, 8, 8, 8, 8]);
+const TITLE2 = titlePalette([0, 0, 0, 0, 15, 15, 15, 15, 6, 6, 6, 8, 10, 10, 10, 7, 10, 10, 10, 7, 11, 11, 11, 7, 14, 1, 1, 4, 9, 9, 9, 7, 1, 3, 7, 0, 8, 8, 8, 8, 9, 0, 0, 4, 11, 0, 0, 12, 0, 2, 10, 1, 5, 5, 5, 8, 6, 6, 6, 8, 8, 8, 8, 7]);
 
-function begin(index: number): void {
-  levelIndex = index;
-  const level = decodeLevel(assets.levels, index);
-  levelName = level.name;
-  // The original seeds its random numbers from the clock when a level starts.
-  startLevel(level, (Date.now() * 18.2 / 1000) & 0xffff);
-  st = status();
-  between = 0;
-  message.hidden = true;
+async function file(name: string): Promise<Uint8Array> {
+  const res = await fetch(BASE + name);
+  if (!res.ok) throw new Error(`Missing original file ${name}`);
+  return new Uint8Array(await res.arrayBuffer());
 }
 
-function pad(n: number, digits: number): string {
-  return String(n).padStart(digits, '0').slice(-digits);
-}
-
-/** The bottom panel as the original draws it (drawGamePanelText, drawGameTime, infotron count). */
-function drawPanel(): void {
-  const y0 = SCREEN_H - PANEL_H;
-  screen.blit(assets.panel, 0, y0);
-  const f = assets.chars8;
-  screen.text(f, 72, y0 + 3, 6, 'MURPHY  ');
-  screen.text(f, 16, y0 + 14, 8, pad(levelIndex + 1, 3));
-  screen.text(f, 64, y0 + 14, 8, levelName.padEnd(23).slice(0, 23));
-  const seconds = Math.floor(st.frame / 35);
-  screen.text(f, 160, y0 + 3, 6, pad(Math.floor(seconds / 3600), 2));
-  screen.text(f, 184, y0 + 3, 6, pad(Math.floor(seconds / 60) % 60, 2));
-  screen.text(f, 208, y0 + 3, 6, pad(seconds % 60, 2));
-  screen.text(f, 272, y0 + 14, st.infotronsLeft === 0 ? 6 : 8, pad(st.infotronsLeft, 3));
-  if (st.redDisks > 0) screen.text(f, 304, y0 + 14, 6, pad(st.redDisks, 2));
-}
-
-function render(): void {
-  const s = scrollOffset();
-  screen.drawLevel(s.x, s.y, SCREEN_H - PANEL_H);
-  drawPanel();
-  screen.present();
-  drawStick(controls.stick);
-}
-
-function step(): void {
-  if (between > 0) {
-    if (--between === 0) begin(st.result === 'won' ? (levelIndex + 1) % levelCount(assets.levels) : levelIndex);
-    return;
+/** TITLE.DAT fades in; TITLE1.DAT; the credits block opens to TITLE2.DAT; wait for a key. */
+async function intro(rt: Runtime, title: Uint8Array, title1: Uint8Array, title2: Uint8Array): Promise<void> {
+  const px = rt.screen.pixels;
+  rt.screen.setPalette(BLACK);
+  px.set(title);
+  await rt.fade(TITLE);
+  // The original loads its data here; show the picture for a moment.
+  for (let t = 0; t < 1500 && rt.taps.length + rt.keys.length === 0; ) t += await rt.frame();
+  rt.clearInput();
+  px.set(title1);
+  rt.screen.setPalette(TITLE1);
+  await rt.frame();
+  // openCreditsBlock: the two halves of the middle bar slide apart over ~429 ms, revealing TITLE2.
+  const EDGE_W = 13, EDGE_H = 148, TOP = 26, FRAMES = 60;
+  const distanceMax = (4 * FRAMES) / 2 + 1;
+  const left0 = 147, right0 = left0 + EDGE_W + 1;
+  const ms = (FRAMES * 1000) / 70;
+  let t = 0;
+  while (t < ms) {
+    t = Math.min(ms, t + (await rt.frame()));
+    const d = Math.ceil(distanceMax * (t / ms));
+    const left = left0 - d, right = right0 + d;
+    for (let y = TOP; y < TOP + EDGE_H; y++) {
+      const row = y * SCREEN_W;
+      for (let x = 0; x < SCREEN_W; x++) {
+        let c: number;
+        if (x >= left && x < left + EDGE_W) c = title1[row + left0 + (x - left)]!;
+        else if (x >= right && x < right + EDGE_W) c = title1[row + right0 + (x - right)]!;
+        else if (x >= left + EDGE_W && x < right) c = title2[row + x]!;
+        else c = title1[row + x]!;
+        px[row + x] = c;
+      }
+    }
   }
-  st = tick(controls.next(isMurphyIdle()));
-  if (st.result !== 'playing') {
-    message.textContent = st.result === 'won' ? `Level ${levelIndex + 1} completed!` : 'Try again';
-    message.hidden = false;
-    between = 70;
+  px.set(title2);
+  await rt.fade(TITLE2);
+  await rt.waitAny();
+  await rt.fade(BLACK);
+}
+
+let inGame = false;
+
+async function main(): Promise<void> {
+  const assets = await loadAssets();
+  setSpriteSheets(assets.moving, assets.fixed);
+  const screen = new Screen(canvas);
+  screen.setPalette(BLACK);
+  const controls = new Controls(document.getElementById('play')!);
+  const rt = new Runtime(screen, assets, new Audio(), new Players(), controls);
+  const [title, title1, title2, menuDat, back, gfx, controlsDat] = await Promise.all(
+    ['TITLE.DAT', 'TITLE1.DAT', 'TITLE2.DAT', 'MENU.DAT', 'BACK.DAT', 'GFX.DAT', 'CONTROLS.DAT'].map(file),
+  );
+  const demos = await Promise.all(Array.from({ length: 10 }, (_, i) => file(`DEMO${i}.BIN`).then(parseDemo).catch(() => null)));
+  const menu = new Menu(rt, { menu: menuDat!, back: back!, gfx: gfx!, controls: controlsDat! });
+  const game = new Game(rt);
+  setupTouchUi(rt, game);
+
+  if (!params.has('skipintro') && !params.has('level')) {
+    await intro(rt, decodeScreen(title!).pixels, decodeScreen(title1!).pixels, decodeScreen(title2!).pixels);
+  }
+
+  // ?level=N: straight into a level (testing); otherwise the menu.
+  let result: LevelResult = null;
+  let fadeIn = true;
+  let direct = params.has('level') ? Number(params.get('level')) : 0;
+  for (;;) {
+    const choice: MenuChoice = direct ? { kind: 'play', level: direct, countTime: false } : await menu.run(result, fadeIn);
+    direct = 0;
+    const demo = choice.kind === 'demo' ? demos[choice.index] ?? null : null;
+    if (choice.kind === 'demo' && !demo) continue;
+    const levelNumber = choice.kind === 'play' ? choice.level : demo!.level;
+    if (!rt.audio.musicOn) rt.audio.stopMusic();
+    inGame = true;
+    const r = await game.play(levelNumber, demo, rt.players.player.name);
+    inGame = false;
+    if (choice.kind === 'play') {
+      if (r.won) rt.players.setSelectedLevelState(LevelState.Completed);
+      if (choice.countTime) rt.players.addTime(r.seconds);
+      rt.players.prepareLevelData(false);
+    }
+    result = { won: r.won, demo: choice.kind === 'demo' };
+    if (!r.won && choice.kind === 'play') {
+      await menu.hardLuck(r.infotronsLeft, r.infotronsTotal);
+      fadeIn = true;
+    } else {
+      await menu.scrollInFromLeft(result);
+      fadeIn = false;
+    }
   }
 }
 
-function frame(now: number): void {
-  if (!last) last = now;
-  acc += Math.min(250, now - last);
-  last = now;
-  if (paused) acc = 0;
-  while (acc >= TICK_MS) {
-    step();
-    acc -= TICK_MS;
-  }
-  render();
-  requestAnimationFrame(frame);
+// ------------------------------------------------------------------ touch: stick overlay, pause
+
+function setupTouchUi(rt: Runtime, game: Game): void {
+  const octx = overlay.getContext('2d')!;
+  rt.afterPresent = () => {
+    pauseButton.hidden = !inGame;
+    drawStick(octx, inGame && !game.paused ? rt.controls.stick : null);
+  };
+  const toggles = {
+    music: document.getElementById('music') as HTMLButtonElement,
+    fx: document.getElementById('fx') as HTMLButtonElement,
+  };
+  const updateToggles = () => {
+    toggles.music.textContent = `Music: ${rt.audio.musicOn ? 'on' : 'off'}`;
+    toggles.fx.textContent = `Sound effects: ${rt.audio.fxOn ? 'on' : 'off'}`;
+  };
+  const setPaused = (p: boolean) => {
+    game.paused = p;
+    pauseMenu.hidden = !p;
+    updateToggles();
+  };
+  pauseButton.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    setPaused(!game.paused);
+  });
+  pauseMenu.addEventListener('pointerdown', (e) => e.stopPropagation());
+  document.getElementById('resume')!.addEventListener('click', () => setPaused(false));
+  document.getElementById('restart')!.addEventListener('click', () => {
+    setPaused(false);
+    game.quit();
+  });
+  toggles.music.addEventListener('click', () => {
+    rt.audio.setMusic(!rt.audio.musicOn);
+    updateToggles();
+  });
+  toggles.fx.addEventListener('click', () => {
+    rt.audio.setFx(!rt.audio.fxOn);
+    updateToggles();
+  });
+  document.getElementById('play')!.addEventListener('pointerdown', () => document.getElementById('hint')?.remove(), { once: true });
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-// ------------------------------------------------------------------ touch stick overlay
-
-const octx = overlay.getContext('2d')!;
-function drawStick(s: StickView): void {
+function drawStick(octx: CanvasRenderingContext2D, s: StickView | null): void {
   const dpr = devicePixelRatio || 1;
   const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
   if (overlay.width !== w || overlay.height !== h) {
@@ -104,7 +177,7 @@ function drawStick(s: StickView): void {
     overlay.height = h;
   }
   octx.clearRect(0, 0, w, h);
-  if (!s.active) return;
+  if (!s?.active) return;
   octx.save();
   octx.scale(dpr, dpr);
   octx.lineWidth = 3;
@@ -132,50 +205,10 @@ function drawStick(s: StickView): void {
   octx.restore();
 }
 
-// ------------------------------------------------------------------ menu (pause, quit level)
-
-function setPaused(p: boolean): void {
-  paused = p;
-  menu.hidden = !p;
-}
-controls.onPause = () => setPaused(!paused);
-controls.onEscape = () => {
-  if (paused) setPaused(false);
-  else if (st?.result === 'playing') tick(Input.None, true); // the original: Esc blows Murphy up
-};
-document.getElementById('pause')!.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  setPaused(!paused);
-});
-menu.addEventListener('pointerdown', (e) => e.stopPropagation());
-document.getElementById('resume')!.addEventListener('click', () => setPaused(false));
-document.getElementById('restart')!.addEventListener('click', () => {
-  setPaused(false);
-  if (st.result === 'playing') tick(Input.None, true);
-});
-document.getElementById('skip')!.addEventListener('click', () => {
-  setPaused(false);
-  begin((levelIndex + 1) % levelCount(assets.levels));
-});
-
-document.getElementById('play')!.addEventListener('pointerdown', () => document.getElementById('hint')!.remove(), { once: true });
-document.addEventListener('gesturestart', (e) => e.preventDefault());
-document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-// ------------------------------------------------------------------ start
-
-loadAssets()
-  .then((a) => {
-    assets = a;
-    setSpriteSheets(a.moving, a.fixed);
-    screen.setPalette(a.palettes[PALETTE_GAME]!);
-    begin(levelIndex);
-    requestAnimationFrame(frame);
-  })
-  .catch((e: Error) => {
-    message.textContent = e.message;
-    message.hidden = false;
-  });
-
 // Test hook for tools/phone.mjs: Murphy's tile.
 (window as unknown as { __murphy: () => number[] }).__murphy = () => [status().murphy % 60, Math.floor(status().murphy / 60)];
+
+main().catch((e: Error) => {
+  message.textContent = e.message;
+  message.hidden = false;
+});

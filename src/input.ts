@@ -155,6 +155,18 @@ export class Controls {
     return dir;
   }
 
+  /** The input code right now, without using up taps or flicks (for display). */
+  peek(): number {
+    const k = (code: string) => this.keys.has(code);
+    let dir: number = Input.None;
+    if (k('ArrowUp')) dir = Input.Up;
+    if (k('ArrowLeft')) dir = Input.Left;
+    if (k('ArrowDown')) dir = Input.Down;
+    if (k('ArrowRight')) dir = Input.Right;
+    if (k('Space')) return dir === Input.None ? Input.SpaceOnly : dir + 4;
+    return dir;
+  }
+
   held(code: string): boolean {
     return this.keys.has(code);
   }
