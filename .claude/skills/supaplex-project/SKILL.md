@@ -21,7 +21,11 @@ Faithful to the DOS original beats modern. Same method as the Stunts remake (see
   (944×368, 8-px frame; tile (x,y) at x*16-8, y*16-8).
 - `src/sim/demo.ts` + `demo.test.ts` — DEMO*.BIN: byte0 level, then (count-1)<<4 | input, 0xFF end.
   Input is read before every tick. The test checks each demo's level ends in its last 64 frames.
-- `src/input.ts` — keyboard + touch → Input code (original updateUserInput priority).
+- `src/input.ts` — keyboard + touch → Input code (original updateUserInput priority). Touch: each
+  drag/flick = one queued step (max 3); a step's direction stays pressed until Murphy is idle again
+  (zonk pushes need it held); holding a drag past the repeat delay (pause menu: 0.15/0.3/0.45 s)
+  walks on; tap a tile next to Murphy = step; hold still 0.38 s or 2nd finger = Space.
+  `tools/phone.mjs` checks all of these on an emulated iPhone.
 - `src/main.ts` — flow: intro → menu → game. `?level=N` starts level N directly, `?skipintro`.
 - `src/app/runtime.ts` — screens are async loops (`await rt.frame()` = one videoLoop), fades,
   slides, taps/keys in 320×200 coords, the animated mouse cursor (MOVING.DAT y=445).

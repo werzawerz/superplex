@@ -2,11 +2,12 @@
 import { loadAssets } from './assets';
 import { decodeScreen, type Palette } from './data/formats';
 import { Screen, SCREEN_W } from './screen';
-import { Controls, type StickView } from './input';
+import { Controls, REPEAT_DELAYS, type RepeatDelay, type StickView } from './input';
 import { setSpriteSheets } from './sim/draw';
 import { Input } from './sim/tiles';
 import { parseDemo } from './sim/demo';
-import { status } from './sim/logic';
+import { status, scrollOffset } from './sim/logic';
+import { LEVEL_BITMAP_W, LEVEL_BITMAP_H } from './sim/draw';
 import { Audio } from './audio/audio';
 import { Players, LevelState } from './ui/players';
 import { Runtime, BLACK } from './app/runtime';
@@ -90,6 +91,14 @@ async function main(): Promise<void> {
   const menu = new Menu(rt, { menu: menuDat!, back: back!, gfx: gfx!, controls: controlsDat! });
   const game = new Game(rt);
   setupTouchUi(rt, game);
+  // Tapping a tile next to Murphy steps there.
+  controls.adjacentDir = (cx, cy) => {
+    if (!inGame || game.paused) return 0;
+    const r = canvas.getBoundingClientRect();
+    const t = game.tileAt(Math.floor(((cx - r.left) / r.width) * 320), Math.floor(((cy - r.top) / r.height) * 200));
+    const m = status().murphy;
+    return t === m - 60 ? Input.Up : t === m - 1 ? Input.Left : t === m + 60 ? Input.Down : t === m + 1 ? Input.Right : 0;
+  };
 
   if (!params.has('skipintro') && !params.has('level')) {
     await intro(rt, decodeScreen(title!).pixels, decodeScreen(title1!).pixels, decodeScreen(title2!).pixels);
@@ -136,10 +145,18 @@ function setupTouchUi(rt: Runtime, game: Game): void {
   const toggles = {
     music: document.getElementById('music') as HTMLButtonElement,
     fx: document.getElementById('fx') as HTMLButtonElement,
+    delay: document.getElementById('delay') as HTMLButtonElement,
   };
+  try {
+    const d = localStorage.getItem('supaplex.repeatDelay') as RepeatDelay | null;
+    if (d && d in REPEAT_DELAYS) rt.controls.repeatDelay = d;
+  } catch {
+    /* default */
+  }
   const updateToggles = () => {
     toggles.music.textContent = `Music: ${rt.audio.musicOn ? 'on' : 'off'}`;
     toggles.fx.textContent = `Sound effects: ${rt.audio.fxOn ? 'on' : 'off'}`;
+    toggles.delay.textContent = `Hold to walk after: ${rt.controls.repeatDelay} (${REPEAT_DELAYS[rt.controls.repeatDelay] / 1000} s)`;
   };
   const setPaused = (p: boolean) => {
     game.paused = p;
@@ -158,6 +175,16 @@ function setupTouchUi(rt: Runtime, game: Game): void {
   });
   toggles.music.addEventListener('click', () => {
     rt.audio.setMusic(!rt.audio.musicOn);
+    updateToggles();
+  });
+  toggles.delay.addEventListener('click', () => {
+    const order = Object.keys(REPEAT_DELAYS) as RepeatDelay[];
+    rt.controls.repeatDelay = order[(order.indexOf(rt.controls.repeatDelay) + 1) % order.length]!;
+    try {
+      localStorage.setItem('supaplex.repeatDelay', rt.controls.repeatDelay);
+    } catch {
+      /* not saved */
+    }
     updateToggles();
   });
   toggles.fx.addEventListener('click', () => {
@@ -206,7 +233,12 @@ function drawStick(octx: CanvasRenderingContext2D, s: StickView | null): void {
 }
 
 // Test hook for tools/phone.mjs: Murphy's tile.
-(window as unknown as { __murphy: () => number[] }).__murphy = () => [status().murphy % 60, Math.floor(status().murphy / 60)];
+const testHooks = window as unknown as { __murphy: () => number[]; __scroll: () => { x: number; y: number } };
+testHooks.__murphy = () => [status().murphy % 60, Math.floor(status().murphy / 60)];
+testHooks.__scroll = () => {
+  const s = scrollOffset();
+  return { x: Math.max(0, Math.min(s.x, LEVEL_BITMAP_W - 320)), y: Math.max(0, Math.min(s.y, LEVEL_BITMAP_H - 176)) };
+};
 
 main().catch((e: Error) => {
   message.textContent = e.message;

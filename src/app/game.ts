@@ -2,7 +2,8 @@
 // second, the bottom panel, Enter = panel on/off, Right Shift = red disk count, Esc = give up,
 // P = pause; at the end the panel slides down.
 import { decodeLevel, PALETTE_GAME, type LevelData } from '../data/formats';
-import { SCREEN_H, PANEL_H } from '../screen';
+import { SCREEN_W, SCREEN_H, PANEL_H } from '../screen';
+import { LEVEL_BITMAP_W, LEVEL_BITMAP_H } from '../sim/draw';
 import { startLevel, tick, scrollOffset, isMurphyIdle, status, setPanelVisible, showRedDiskCount, type GameStatus } from '../sim/logic';
 import { DemoPlayer, type Demo } from '../sim/demo';
 import { Input } from '../sim/tiles';
@@ -27,6 +28,18 @@ export class Game {
 
   constructor(private readonly rt: Runtime) {}
 
+  /** The level tile index under a point of the 320×200 screen, or -1 (panel, outside). */
+  tileAt(sx: number, sy: number): number {
+    const viewH = this.panelVisible ? SCREEN_H - PANEL_H : SCREEN_H;
+    if (sx < 0 || sy < 0 || sx >= SCREEN_W || sy >= viewH) return -1;
+    const s = scrollOffset();
+    const x0 = Math.max(0, Math.min(s.x, LEVEL_BITMAP_W - SCREEN_W));
+    const y0 = Math.max(0, Math.min(s.y, LEVEL_BITMAP_H - viewH));
+    // Tile (x, y) is drawn at x*16-8, y*16-8 in the level picture.
+    const tx = Math.floor((sx + x0 + 8) / 16), ty = Math.floor((sy + y0 + 8) / 16);
+    return ty * 60 + tx;
+  }
+
   /** Esc / the menu's "give up": Murphy explodes like in the original. */
   quit(): void {
     this.quitRequested = true;
@@ -41,6 +54,7 @@ export class Game {
     const player = demo ? new DemoPlayer(demo) : null;
     this.quitRequested = false;
     this.paused = false;
+    rt.controls.reset();
     this.panelVisible = true;
     setPanelVisible(true);
     let st = status();

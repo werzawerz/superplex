@@ -1,9 +1,12 @@
 // Player input → the original's per-tick input code (Input.*), from the keyboard or touch.
 //
-// Touch (no on-screen buttons): put a finger down anywhere and drag — the direction you drag
-// is the arrow key held (a floating stick). A quick flick moves one step. Hold still for a
-// moment (or put a second finger down) to hold "space": then drag to eat/pick up next to Murphy
-// without moving, or keep holding to drop a red disk.
+// Touch (no on-screen buttons):
+// - Drag anywhere (a floating stick): each drag or flick is exactly one step; keep holding the
+//   direction past the repeat delay and Murphy walks on, like a key's auto-repeat.
+// - Steps made while Murphy is still moving are queued (up to 3), so quick flicks aren't lost.
+// - Tap one of the four tiles next to Murphy: one step there.
+// - Hold still for a moment (or keep a second finger down) to hold "space": then drag/tap to
+//   eat or pick up next to Murphy without moving, or keep holding to drop a red disk.
 import { Input } from './sim/tiles';
 
 export type Dir = 0 | 1 | 2 | 3 | 4; // none, up, left, down, right (Input codes)
@@ -11,6 +14,16 @@ export type Dir = 0 | 1 | 2 | 3 | 4; // none, up, left, down, right (Input codes
 const DEAD_ZONE = 14; // CSS px before a drag counts as a direction
 const FOLLOW = 44; // the stick origin trails the finger beyond this distance
 const HOLD_MS = 380; // holding still this long turns on "space"
+const QUEUE = 3; // steps remembered while Murphy is busy
+
+/** Delay before a held drag walks continuously (pause menu setting). */
+export const REPEAT_DELAYS = { short: 150, normal: 300, long: 450 } as const;
+export type RepeatDelay = keyof typeof REPEAT_DELAYS;
+
+interface Step {
+  dir: number;
+  space: boolean;
+}
 
 export interface StickView {
   active: boolean;
@@ -36,8 +49,17 @@ export class Controls {
   private touchDir: Dir = 0;
   private holdAction = false;
   private holdTimer = 0;
-  private flick: Dir = 0;
-  private dirConsumed = false;
+  private steps: Step[] = [];
+  /** The step Murphy is doing now: its direction stays pressed until he stands still again
+   *  (pushing a zonk needs the direction held while he leans on it). */
+  private current: Step | null = null;
+  /** When the current drag direction started (for the repeat delay). */
+  private dirSince = 0;
+  private downAt = 0;
+  private moved = false;
+  repeatDelay: RepeatDelay = 'normal';
+  /** Direction from Murphy to the tile under a screen point, or 0 if it isn't next to him. */
+  adjacentDir: (clientX: number, clientY: number) => number = () => 0;
   onEscape: () => void = () => {};
   onPause: () => void = () => {};
 
@@ -62,8 +84,10 @@ export class Controls {
   private down(e: PointerEvent): void {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    this.downAt = performance.now();
     if (this.movePointer < 0) {
       this.movePointer = e.pointerId;
+      this.moved = false;
       this.ox = this.x = e.clientX;
       this.oy = this.y = e.clientY;
       this.touchDir = 0;
@@ -98,15 +122,32 @@ export class Controls {
     }
     if (dir !== this.touchDir) {
       this.touchDir = dir;
-      this.dirConsumed = false;
+      this.dirSince = performance.now();
+      if (dir !== 0) this.push(dir, false);
     }
-    if (dir !== 0) clearTimeout(this.holdTimer);
+    if (dir !== 0) {
+      this.moved = true;
+      clearTimeout(this.holdTimer);
+    }
+  }
+
+  private push(dir: number, space: boolean): void {
+    if (this.steps.length < QUEUE) this.steps.push({ dir, space: space || this.spaceHeld() });
+  }
+
+  private spaceHeld(): boolean {
+    return this.holdAction || this.actionPointers.size > 0;
   }
 
   private up(e: PointerEvent): void {
+    // A quick tap (no drag) on a tile next to Murphy is a step there; with another finger held
+    // (or a tap made as the second finger) it is a space step.
+    const isTap = performance.now() - this.downAt < HOLD_MS && !(e.pointerId === this.movePointer && this.moved);
+    if (isTap) {
+      const dir = this.adjacentDir(e.clientX, e.clientY);
+      if (dir) this.push(dir, e.pointerId !== this.movePointer);
+    }
     if (e.pointerId === this.movePointer) {
-      // A flick released before Murphy took the step still makes that one step.
-      if (this.touchDir !== 0 && !this.dirConsumed) this.flick = this.touchDir;
       this.movePointer = -1;
       this.touchDir = 0;
       this.holdAction = false;
@@ -115,9 +156,16 @@ export class Controls {
     this.actionPointers.delete(e.pointerId);
   }
 
+  /** Forget queued touch steps (a new level starts). */
+  reset(): void {
+    this.steps = [];
+    this.current = null;
+    this.tapped.clear();
+  }
+
   get stick(): StickView {
     return {
-      active: this.movePointer >= 0,
+      active: this.movePointer >= 0 && (this.moved || this.holdAction),
       ox: this.ox,
       oy: this.oy,
       x: this.x,
@@ -130,7 +178,7 @@ export class Controls {
   /**
    * The input for the next game tick, like the original's updateUserInput: the last pressed of
    * up/left/down/right wins in that order; with space it becomes a space+direction code.
-   * `murphyIdle`: Murphy reads input this tick (so a flick is used up).
+   * `murphyIdle`: Murphy reads input this tick (so a queued step is used up).
    */
   next(murphyIdle: boolean): number {
     const k = (code: string) => this.keys.has(code) || this.tapped.has(code);
@@ -142,14 +190,20 @@ export class Controls {
     let space = k('Space');
     this.tapped.clear();
 
-    if (this.touchDir !== 0) {
+    const walking = this.touchDir !== 0 && performance.now() - this.dirSince >= REPEAT_DELAYS[this.repeatDelay];
+    if (walking) {
+      // Held past the repeat delay: walk on; queued steps are part of this walk.
       dir = this.touchDir;
-      if (murphyIdle) this.dirConsumed = true;
-    } else if (this.flick !== 0) {
-      dir = this.flick;
-      if (murphyIdle) this.flick = 0;
+      this.steps = [];
+      this.current = null;
+    } else {
+      if (murphyIdle) this.current = this.steps.shift() ?? null;
+      if (this.current) {
+        dir = this.current.dir;
+        if (this.current.space) space = true;
+      }
     }
-    if (this.holdAction || this.actionPointers.size > 0) space = true;
+    if (this.spaceHeld()) space = true;
 
     if (space) return dir === Input.None ? Input.SpaceOnly : dir + 4;
     return dir;
